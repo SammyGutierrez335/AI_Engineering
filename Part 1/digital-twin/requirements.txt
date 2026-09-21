@@ -2,4 +2,3 @@ openai
 gradio
 chromadb
 requests
-random

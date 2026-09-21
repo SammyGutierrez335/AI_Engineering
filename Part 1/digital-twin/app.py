@@ -5,7 +5,10 @@ from pprint import pprint
 import chromadb
 import uuid
 import random
+import json
 import requests
+
+
 #-------------------------------------------
 # Setup
 #------------------------------------------
@@ -28,15 +31,37 @@ Additional Info:
 - In his time working with software, he helped developed the web application for a augmented reality work instructions and management solution. Upon successful completion, he presented the software to Naval Officers in the San Diego NavAir base.
 Next, he assisted in the creation of 'Wooorld' a mixed reality social exploration platform for the Oculus system. He served as the Director of the backend and cloud infrastructure and successfully launched it with his team at Wooorld. 
 Within a week, the application was the #2 paid application in the Oculus store.
-- What drives him: He genuinely loves solving problembs. Through out his career, no matter the field, he would find areas of his industry that appeared to be highly ineffecient and develop solutions for the benefit of the company and his co-workers.
+- What drives him: He genuinely loves solving problems. Through out his career, no matter the field, he would find areas of his industry that appeared to be highly ineffecient and develop solutions for the benefit of the company and his co-workers.
 One example was his development of a digital meter reading solution while he worked in the water industry and another was a digital dismissal system that he created and implmented for a school he was working for. The digital meter reading solution allowed a team of 4 to complete in a week what it used to take a team of 10 in a month. 
 With the digital dismissal system, he optimized after school dismissal from about 45 minutes of work (daily) to approximately 20 minutes. 
 - He finds it rewarding to help others in his sphere of influence and is not shy to support other people in their learning.
-
 - Communication style: Direct but friendly. Often objective oriented but also stays grounded in knowing it is also about enjoying the process.
+- Pineapple on Pizza? Absolutely. I find Pineapple and Pepperoni a tasty combo. One of my favorite types of pizza is is Pepperoni, Pineapple, and Jalepeno pizza. 
 """
 
 document_education = """
+SuperDataScience AI Engineering Course
+- Attended from August-October 2026
+- Studied:
+    - Prompt engineering (system vs user prompts)
+    - Tokenization and API Cost management
+    - Conversation history & context management
+    - Building chat UIs with Gradio
+    - RAG (chunking, embeddings, vector stores)
+    - LLM tool calling (parallel & sequential calls)
+    - Deploying to Hugging Face Spaces 
+
+Google AI Profressional Certification Course
+- Attended from June-July 2026
+- Studied:
+    - AI for App Deployment
+    - AI for App Building
+    - AI for Data Analysis
+    - AI for Content Creation
+    - AI for Writing and Communication
+    - AI for App Research and Insights
+    - AI for Brainstorming and Planning
+
 App Academy Bootcamp
 - Time attended - October 2019 - March 2020
 - Studied: Software Engineering and Full Stack Development
@@ -54,11 +79,6 @@ Jul 2006 – May 2008
 
 Activities and societies: Choir, Jazz Band
 Awards: Dean's List Recipient
-
-Super Data Science
-Studied AI Engineering
-Aug 2026 – Oct 2026
-Skills: Artificial Intelligence (AI), Large Language Models (LLM)
 """
 
 document_professional_experience = """
@@ -595,21 +615,26 @@ pushover_user = os.getenv("PUSHOVER_USER")
 pushover_token = os.getenv("PUSHOVER_TOKEN")
 pushover_url = "https://api.pushover.net/1/messages.json"
 
-if not pushover_token or not pushover_user:
-    raise Exception("Your Pushover Data is missing")
-
 def send_notification(message: str):
+    #handles potentially missing credentials and notifies the LLM
+    if not pushover_token or not pushover_user:
+        return "Notification failed: Pushover not configured"
+
     payload = {
         "user": pushover_user,
         "token": pushover_token,
         "message": message
     }    
     requests.post(pushover_url, data=payload)
+    return f"Notification Sent: {message}"
 
 #sets up variable to describe tool to llm
 send_notification_function = {
     "name": "send_notification",
-    "description": "Sends a push notification to the real version of you via Pushover on mobile. Use this if the user needs to alert the real-world version you about important events, completed tasks, or time-sensitive information",
+    "description": "Sends a push notification to the real Sammy. Use this when:\
+        1) Someone wants to get in touch, hire or collaborate\
+            - ask for their name and contact details first, then send notification to Sammy with the name and contact details.\
+        2) You don't know the answer to a question about Sammy - send AUTOMATICALLY without asking, include the question so he can add this info later.",
     "parameters" : {
         "type": "object",
         "properties": {
@@ -645,15 +670,14 @@ tools.extend([{"type": "function", "function": send_notification_function}, {"ty
 def handle_tool_calls(tool_calls):
     tool_call_results = []
     for tool_call in tool_calls:
-        if tool_call.function.name == "send_notification":
-            args = json.loads(tool_call.function.arguments) 
-            message = args.get("message")
-            send_notification(message)
-            content = f"Notification sent: {message}"
-        elif tool_call.function.name == "roll_dice":
+        function_name = tool_call.function.name
+        args = json.loads(tool_call.function.arguments) 
+        if function_name == "send_notification":
+            content = send_notification(args["message"])
+        elif function_name == "roll_dice":
             content = f'"Rolled: {dice_roll()}'
         else:
-            content = f"Unknown tool call: {tool_call.function.name}"
+            content = f"Unknown tool call: {function_name}"
 
         tool_call_result = {
             "role": "tool",
@@ -675,7 +699,9 @@ system_message = """You are a digital twin of Sammy Gutierrez. When people talk 
 IMPORTANT: do not make things up. If you don't know an answer, say you don't know. The only factual information available to you is what's in this system message.
 You cannot get any more facts about Sammy from the internet or make them up.
 
-Here's information about Sammy to help you embody him:"""
+!!IMPORTANT!! Whenever you don't know something about Sammy,
+ALWAYS use the send_notification tool to alert the real Sammy - do this automatically without asking the user.
+"""
 
 #-------------------------------------------
 # Main Response Function
@@ -710,6 +736,8 @@ def respond_ai(message, history):
 
     #build messages for this turn
     messages = [{"role": "system", "content": system_message_enhanced}] + history + [{"role": "user", "content": message}]    
+
+    #call LLM
     response = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=messages,
@@ -724,16 +752,21 @@ def respond_ai(message, history):
         messages.extend(tool_results)  # This is a more concise way to add all tool results to messages
 
         response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=messages,
-        tools=tools
-    )
-
-    message = response.choices[0].message
+            model="gpt-4.1-mini",
+            messages=messages,
+            tools=tools
+        )
+        message = response.choices[0].message
     return message.content
 
 #-------------------------------------------
 # Launch Gradio
 #------------------------------------------
 
-gr.ChatInterface(fn=respond_ai).launch(inbrowser=True)
+gr.ChatInterface(
+    fn=respond_ai,
+    title="Sammy's Digital Twin",
+    chatbot=gr.Chatbot(avatar_images=(None, "sammy.jpeg")),
+    description="Chat with an AI version of Sammy Gutierrez. Ask about his experience, projects, background, or just say Hi!",
+    examples=["What's your background?", "What are some cool things you have built?", "Do you like pineapple on pizza?"]
+).launch(theme=gr.themes.Ocean())
